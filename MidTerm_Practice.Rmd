@@ -57,84 +57,108 @@ Compare the performance (in terms of **RMSE**) of the following two models:
 * Investigate the dataset and complete any necessary tasks.
 
 ```{r}
-# write your R code here
-
-
-
+summary(College) # all numeric except Private, which is nominal
+sum(is.na(College)) # no NA variables
+nearZeroVar(College, saveMetrics = TRUE)   # check which predictors are zv/nzv, so yay there are none
 ```
 
 
 * Split the data into training and test sets (80-20).
-
 ```{r}
-# write your R code here
 set.seed(333)
+# create partition
+ti <- createDataPartition(y = College$Yield, p = 0.8, list = FALSE)
 
-
-
+# train and test
+college_train <- College[ti,]
+college_test <- College[-ti,]
 ```
-
 
 * Perform required data preprocessing and create the blueprint. If using `step_dummy()`, set `one_hot = FALSE`. Prepare the blueprint on the training data. Obtain the modified training and test datasets. **Explain the blueprint steps that you use.**
 
 ```{r}
-# write your R code here
 set.seed(333)
 
+# prep the recipe
+college_recipe <- recipe(Yield ~ ., data = college_train)
 
+# create blueprint by using the step_center to center all numeric, the step_scale to scale all numeric, and the step_dummy to convert categorical variables (literally only the yes/no one (Private) and exclude response).
+blueprint <- college_recipe %>%
+  step_center(all_numeric(), -all_outcomes()) %>%
+  step_scale(all_numeric(), -all_outcomes()) %>%
+  step_dummy(all_nominal(), one_hot = FALSE)
 
+# prepare and apply blueprint to test and training data
+prepare <- prep(blueprint, data = college_train)
+baked_train <- bake(prepare, new_data = college_train)
+baked_test <- bake(prepare, new_data = college_test)
 ```
 
 
 * Implement 5-fold CV repeated 5 times for each of the models above. 
 
 ```{r}
-# write your R code here
 set.seed(333)
 
+# cv stuff
+cv_specs <- trainControl(method = "repeatedcv", number = 5, repeats = 5)
 
+# lm stuff
+lm_fit <- train(blueprint,
+                  data = college_train, 
+                  method = "lm",
+                  trControl = cv_specs,
+                  metric = "RMSE")
 
+# knn stuff
+k_grid <- expand.grid(k = seq(1, 101, by = 10))
+knn_fit <- train(blueprint,
+                  data = college_train, 
+                  method = "knn",
+                  trControl = cv_specs,
+                  tuneGrid = k_grid,
+                  metric = "RMSE")
 
-k_grid <- expand.grid(k = seq(1, 101, by = 10))   # for KNN
-
-
-
+# full cv results on lm and knn, best k, optimal RMSE, and plot the graph
+lm_fit # full cv results
+knn_fit # full cv results
+knn_fit$bestTune$k # best k value
+min(knn_fit$results$RMSE) # optimal RMSE
+ggplot(knn_fit) # plot it
 ```
 
 
 * Report the optimal CV RMSE of each model. Report the optimal value of $K$ for the $K$-NN model. Which model performs better in this situation? 
 
 ```{r}
-# write your R code here
+# best optimal CV RMSE for LM
+lm_fit$results$RMSE
 
+# best optimal CV RMSE for KNN:
+min(knn_fit$results$RMSE)
 
+# k for knn
+knn_fit$bestTune$k
 ```
 
 ```{}
-# write your answer here
-
-
-
+lm_fit performs better because the RMSE is smaller
 ```
-
 
 * Using the optimal model, obtain predictions on the test set. Calculate and report the test set RMSE.
 
 ```{r}
-# write your R code here
-
-
-
+# build final model, get predictions on test data, and calculate test RMSE
+final_model <- lm(Yield ~  ., data = baked_train)
+final_preds <- predict(object = final_model, newdata = baked_test)
+sqrt(mean((final_preds - baked_test$Yield)^2))
 ```
 
 
 * Using the CV object for the linear regression model, obtain the variable importance measures for each feature.
 
 ```{r}
-# write your R code here
-
-
-
+vip(object = lm_fit, num_features = 20, method = "model")
 ```
 
 
@@ -163,32 +187,44 @@ Compare the performance (in terms of **Accuracy**) of the following two models:
 * Investigate the dataset and complete any necessary tasks.
 
 ```{r}
-# write your R code here
-
-
-
+summary(banknote) # all numeric except authentic
+sum(is.na(banknote)) # well crap there are NAs in there... yay... in everything except authentic
+nearZeroVar(banknote, saveMetrics = TRUE)   # check which predictors are zv/nzv, so yay there are none
 ```
 
 
 * Split the data into training and test sets (80-20).
 
 ```{r}
-# write your R code here
 set.seed(333)
 
+# create partition
+ti <- createDataPartition(y = banknote$authentic, p = 0.8, list = FALSE)
 
-
+# train and test
+bn_train <- banknote[ti,]
+bn_test <- banknote[-ti,]
 ```
 
 
 * Perform required data preprocessing and create the blueprint. If using `step_dummy()`, set `one_hot = FALSE`. Prepare the blueprint on the training data. Obtain the modified training and test datasets. **Explain the blueprint steps that you use.**
 
 ```{r}
-# write your R code here
 set.seed(333)
 
+# prep the recipe
+bn_recipe <- recipe(authentic ~ ., data = bn_train)
 
+# create blueprint by using the step_center to center all numeric, the step_scale to scale all numeric, and step_impute_mean to fill in all the NAs.
+blueprint <- bn_recipe %>%
+  step_impute_mean(entropy, kurtosis, skewness, variance) %>%
+  step_center(all_numeric(), -all_outcomes()) %>%
+  step_scale(all_numeric(), -all_outcomes())
 
+# prepare and apply blueprint to test and training data
+prepare <- prep(blueprint, data = bn_train)
+baked_train <- bake(prepare, new_data = bn_train)
+baked_test <- bake(prepare, new_data = bn_train)
 ```
 
 
@@ -198,45 +234,53 @@ set.seed(333)
 # write your R code here
 set.seed(333)
 
+# cv stuff
+cv_specs <- trainControl(method = "repeatedcv", number = 5, repeats = 5)  
 
-# CV specifications (To use the code below, remove # and fill the blanks appropriately)
-# cv_specs <- trainControl(method = __________, 
-#                          number = __________, 
-#                          repeats = __________)  
+# lm stuff
+log_cv <- train(blueprint,
+                data = bn_train,
+                method = "glm",
+                family = "binomial",
+                trControl = cv_specs,
+                metric = "Accuracy")
 
-
-
-
-k_grid <- expand.grid(k = seq(1, 101, by = 10))  # for KNN 
-
-
-
+# knn stuff
+k_grid <- expand.grid(k = seq(1, 101, by = 10))
+knn_fit <- train(blueprint,
+                  data = bn_train, 
+                  method = "knn",
+                  trControl = cv_specs,
+                  tuneGrid = k_grid,
+                  metric = "Accuracy")
 ```
-
 
 * Report the optimal CV Accuracy for each model. Report the optimal value of $K$ for the $K$-NN classifier. Which model performs better in this situation? 
 
 ```{r}
-# write your R code here
+# best optimal CV Accuracy for LRM
+log_cv$results$Accuracy
 
+# best optimal CV Accuracy for KNN:
+max(knn_fit$results$Accuracy)
 
+# k for knn
+knn_fit$bestTune$k
 ```
 
 ```{}
-# write your answer here
-
-
-
+knn_fit was better because it had a higher accuracy
 ```
 
 
 * Finally, with the optimal model, obtain class label predictions on the test set (use threshold of 0.5). Create the corresponding confusion matrix and report the test set accuracy.
 
 ```{r}
-# write your R code here
+# build final model, get predictions on test data, and create confusion matric to calculate test Accuracy
+final_model <- knn3(authentic ~ ., data = baked_train, k = knn_fit$bestTune$k)
+final_preds <- predict(object = final_model, newdata = baked_test, type = "class")
 
-
-
+confusionMatrix(data = relevel(final_preds, ref = "Yes"), reference = relevel(baked_test$authentic, ref = "Yes"))
 ```
 
 
